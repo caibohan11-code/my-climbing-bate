@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>抱石作业帮</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    :root {
+      --bg-0: #090b10;
+      --bg-1: #121621;
+      --glass: rgba(22, 27, 38, 0.58);
+      --glass-border: rgba(255, 255, 255, 0.1);
+      --text: rgba(255, 255, 255, 0.93);
+      --muted: rgba(255, 255, 255, 0.56);
+      --accent: #ff6b2c;
+      --mint: #3dff9a;
+      --blue: #59a8ff;
+      --radius-xl: 26px;
+      --radius-lg: 18px;
+      --radius-md: 12px;
+      --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--font);
+      color: var(--text);
+      background:
+        radial-gradient(130% 70% at 50% -10%, rgba(255, 107, 44, 0.18), transparent 55%),
+        radial-gradient(90% 55% at 100% 100%, rgba(61, 255, 154, 0.08), transparent 55%),
+        linear-gradient(180deg, var(--bg-0), var(--bg-1));
+      padding: max(18px, env(safe-area-inset-top)) 14px max(24px, env(safe-area-inset-bottom));
+    }
+    main {
+      width: min(100%, 460px);
+      max-width: 100%;
+      margin: 0 auto;
+      min-width: 0;
+    }
+    h1 {
+      text-align: center;
+      margin: 8px 0 16px;
+      font-size: 1.4rem;
+      letter-spacing: -0.02em;
+    }
+    .card {
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      backdrop-filter: blur(28px) saturate(140%);
+      -webkit-backdrop-filter: blur(28px) saturate(140%);
+      border-radius: var(--radius-xl);
+      padding: 18px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+    }
+    .section-label { font-size: 0.76rem; color: var(--muted); margin: 0 0 8px; }
+    .upload-zone {
+      position: relative;
+      min-height: 130px;
+      border: 2px dashed rgba(255, 255, 255, 0.2);
+      border-radius: var(--radius-lg);
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 20px 14px;
+      margin-bottom: 14px;
+      transition: 0.25s ease;
+      background: rgba(0, 0, 0, 0.24);
+    }
+    .upload-zone:hover,.upload-zone:focus-within { border-color: rgba(255, 107, 44, 0.6); background: rgba(255,107,44,0.08); }
+    .upload-zone.is-dragover { border-color: var(--accent); transform: scale(1.01); }
+    .upload-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+    .upload-hint,.file-name { margin: 0; font-size: 0.9rem; }
+    .file-name { color: var(--mint); display: none; }
+    .upload-zone.has-file .upload-hint { display: none; }
+    .upload-zone.has-file .file-name { display: block; }
+    .canvas-wrap { display: none; margin-bottom: 14px; }
+    canvas {
+      width: 100%;
+      height: auto;
+      border-radius: var(--radius-lg);
+      border: 1px solid rgba(61, 255, 154, 0.25);
+      background: #0d1016;
+      display: block;
+      cursor: crosshair;
+    }
+    .canvas-actions { display: flex; gap: 8px; margin-top: 8px; }
+    .canvas-actions button, .meta-head button {
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+    .canvas-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+    .field label { display: block; font-size: 0.74rem; color: var(--muted); margin-bottom: 4px; }
+    select,input {
+      width: 100%;
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: var(--radius-md);
+      background: rgba(0,0,0,0.32);
+      color: var(--text);
+      padding: 11px 12px;
+      font-size: 0.9rem;
+    }
+    .meta-head {
+      margin-top: 6px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .meta-head strong { font-size: 0.86rem; }
+    #pointCountBadge { color: var(--mint); }
+    .point-meta-list { display: flex; flex-direction: column; gap: 8px; max-height: 210px; overflow: auto; margin-bottom: 12px; }
+    .point-meta-item {
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 8px;
+      background: rgba(255,255,255,0.03);
+      display: grid;
+      grid-template-columns: 48px 1fr 1fr 1fr;
+      gap: 8px;
+      align-items: center;
+    }
+    .idx {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      color: var(--accent);
+      background: rgba(255,107,44,0.14);
+      border: 1px solid rgba(255,107,44,0.35);
+      font-weight: 700;
+    }
+    .btn-analyze {
+      width: 100%;
+      border: 0;
+      border-radius: var(--radius-lg);
+      padding: 14px;
+      font-size: 1rem;
+      font-weight: 600;
+      color: #08111a;
+      background: linear-gradient(135deg, #ffa47c 0%, #ff6b2c 50%, #e3561f 100%);
+      box-shadow: 0 8px 28px rgba(255, 107, 44, 0.42);
+      cursor: pointer;
+    }
+    .btn-step2 {
+      color: #08140d;
+      background: linear-gradient(135deg, #8dffc3 0%, #3dff9a 55%, #2fd785 100%);
+      box-shadow: 0 8px 28px rgba(61, 255, 154, 0.35);
+    }
+    .btn-analyze:disabled { opacity: 0.8; cursor: not-allowed; }
+    .result-wrap {
+      margin-top: 14px;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+    }
+    .tip {
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+    .slab-angle-row { margin-bottom: 10px; }
+    .result-card {
+      border-radius: var(--radius-xl);
+      padding: 16px;
+      border: 1px solid rgba(61,255,154,0.2);
+      background: rgba(20,25,35,0.68);
+      line-height: 1.65;
+      max-width: 100%;
+      min-width: 0;
+      overflow-x: auto;
+      overflow-wrap: break-word;
+      word-break: break-word;
+      -webkit-overflow-scrolling: touch;
+    }
+    .result-card.error { border-color: rgba(255,100,100,0.4); }
+    .result-card ul,
+    .result-card ol { margin: 0.5em 0 0.5em 1.1em; padding-left: 0; max-width: 100%; }
+    .result-card li { margin: 0.25em 0; }
+    .result-card h1,.result-card h2,.result-card h3 { color: var(--mint); margin: 0.8em 0 0.35em; max-width: 100%; }
+    .result-card p { margin: 0.5em 0; max-width: 100%; }
+    .result-card pre,
+    .result-card code {
+      max-width: 100%;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .result-card pre {
+      overflow-x: auto;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .result-card table {
+      display: block;
+      max-width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .result-card img,
+    .result-card video { max-width: 100%; height: auto; }
+    @media (max-width: 390px) {
+      .grid2 { grid-template-columns: 1fr; }
+      .point-meta-item { grid-template-columns: 44px 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>抱石作业帮</h1>
+    <section class="card">
+      <p class="section-label">上传路线图</p>
+      <div class="upload-zone" id="uploadZone" tabindex="0">
+        <input type="file" id="fileInput" accept="image/*" />
+        <p class="upload-hint">点击或拖拽上传攀岩路线图</p>
+        <p class="file-name" id="fileName"></p>
+      </div>
+
+      <p class="section-label">攀岩者身体参数</p>
+      <div class="grid2">
+        <div class="field">
+          <label for="climberHeight">身高 (cm)</label>
+          <input id="climberHeight" type="number" min="100" max="230" step="1" placeholder="例如 175" />
+        </div>
+        <div class="field">
+          <label for="armSpanStatus">臂展状态</label>
+          <select id="armSpanStatus">
+            <option>正臂展</option>
+            <option>负臂展</option>
+            <option>等长</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="canvas-wrap" id="canvasWrap">
+        <canvas id="routeCanvas"></canvas>
+        <div class="canvas-actions">
+          <button id="undoPoint" type="button" disabled>撤销上一步</button>
+          <button id="clearPoints" type="button" disabled>清空点位</button>
+        </div>
+      </div>
+
+      <p class="section-label">分析参数</p>
+      <div class="grid2">
+        <div class="field">
+          <label for="wallAngle">墙体角度</label>
+          <select id="wallAngle">
+            <option value="vertical">垂直墙</option>
+            <option value="slab">仰角 / Slab</option>
+            <option value="overhang">俯角 / Overhang</option>
+            <option value="roof">屋檐 / Roof</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="footholdRule">脚点规则</label>
+          <select id="footholdRule"><option>同色脚点（Strict）</option><option>任意脚点（Any footholds）</option><option>极小脚点（Micro-footholds / Chips）</option><option>纯墙面摩擦（Smearing）</option><option>坡面脚点</option></select>
+        </div>
+      </div>
+      <div class="field slab-angle-row" id="slabAngleRow" hidden>
+        <label for="slabAngle">Slab 墙面坡度 (°)</label>
+        <select id="slabAngle">
+          <option>约 10°</option>
+          <option>约 15°</option>
+          <option selected>约 20°</option>
+          <option>约 25°</option>
+          <option>约 30°</option>
+          <option>约 35°</option>
+          <option>约 40°</option>
+          <option>约 45°</option>
+        </select>
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label for="routeColor">线路颜色</label>
+          <select id="routeColor"><option>红色</option><option>蓝色</option><option>绿色</option><option>黄色</option><option>黑色</option><option>白色</option><option>紫色</option></select>
+        </div>
+        <div class="field">
+          <label for="extraHint">补充提示（可选）</label>
+          <input id="extraHint" type="text" placeholder="例如：偏好静态发力" />
+        </div>
+      </div>
+
+      <div class="meta-head">
+        <strong>岩点数量：<span id="pointCountBadge">0</span></strong>
+      </div>
+      <p class="tip">流程建议：先点位并拖拽微调，再手动配置每个点位属性，最后生成专业 Beta。</p>
+      <div id="pointMetaList" class="point-meta-list"></div>
+
+      <button class="btn-analyze btn-step2" id="btnStep2" type="button" disabled>生成专业 Beta</button>
+    </section>
+
+    <div id="resultWrap" class="result-wrap" hidden>
+      <div id="resultCard" class="result-card"></div>
+    </div>
+  </main>
+
+  <script>
+    (function () {
+
+      
+
+      var zone = document.getElementById("uploadZone");
+      var fileInput = document.getElementById("fileInput");
+      var fileName = document.getElementById("fileName");
+      var canvasWrap = document.getElementById("canvasWrap");
+      var canvas = document.getElementById("routeCanvas");
+      var undoBtn = document.getElementById("undoPoint");
+      var clearBtn = document.getElementById("clearPoints");
+      var pointMetaList = document.getElementById("pointMetaList");
+      var pointCountBadge = document.getElementById("pointCountBadge");
+      var btnStep2 = document.getElementById("btnStep2");
+      var climberHeight = document.getElementById("climberHeight");
+      var armSpanStatus = document.getElementById("armSpanStatus");
+      var resultWrap = document.getElementById("resultWrap");
+      var resultCard = document.getElementById("resultCard");
+      var wallAngleSelect = document.getElementById("wallAngle");
+      var slabAngleRow = document.getElementById("slabAngleRow");
+
+      var HAND_TYPES = [
+        { value: "Jug (大抓点)", label: "Jug (大抓点)" },
+        { value: "Crimp (抠点)", label: "Crimp (抠点)" },
+        { value: "Sloper (摩擦点)", label: "Sloper (摩擦点)" },
+        { value: "Pinch (捏点)", label: "Pinch (捏点)" },
+        { value: "Pocket (指洞)", label: "Pocket (指洞)" },
+        { value: "Undercling (反抠)", label: "Undercling (反抠)" },
+        { value: "Sidepull (侧拉)", label: "Sidepull (侧拉)" }
+      ];
+      var FOOT_TYPES = [
+        { value: "Edge (微小踩点)", label: "Edge (微小踩点)" },
+        { value: "Smear (纯墙面摩擦)", label: "Smear (纯墙面摩擦)" },
+        { value: "Volume (大造型)", label: "Volume (大造型)" },
+        { value: "Hook (挂脚/勾脚处)", label: "Hook (挂脚/勾脚处)" }
+      ];
+      var points = [];
+      var pointMeta = [];
+      var bgImage = null;
+      var busy = false;
+      var dragIndex = -1;
+
+      function setUploadName(file) {
+        if (file && file.name) {
+          zone.classList.add("has-file");
+          fileName.textContent = file.name;
+        } else {
+          zone.classList.remove("has-file");
+          fileName.textContent = "";
+        }
+      }
+
+      function syncButtons() {
+        var has = points.length > 0;
+        undoBtn.disabled = !has;
+        clearBtn.disabled = !has;
+        pointCountBadge.textContent = String(points.length);
+        btnStep2.disabled = !has || busy;
+      }
+
+      function getTypeOptionsByRole(role) {
+        return role === "脚点" ? FOOT_TYPES : HAND_TYPES;
+      }
+
+      function defaultTypeByRole(role) {
+        var opts = getTypeOptionsByRole(role);
+        return opts[0].value;
+      }
+
+      function getOrDefaultMeta(index) {
+        return pointMeta[index] || {
+          role: "手点",
+          type: "Jug (大抓点)",
+          stage: "中间点 (Middle)",
+          direction: "朝上 (Up)"
+        };
+      }
+
+      function renderPointMetaEditor() {
+        pointMeta = points.map(function (_, i) { return getOrDefaultMeta(i); });
+        pointMetaList.innerHTML = "";
+        pointMeta.forEach(function (meta, i) {
+          var typeOptions = getTypeOptionsByRole(meta.role)
+            .map(function (opt) {
+              return '<option value="' + opt.value + '"' + (meta.type === opt.value ? " selected" : "") + ">" + opt.label + "</option>";
+            })
+            .join("");
+          var row = document.createElement("div");
+          row.className = "point-meta-item";
+          row.innerHTML =
+            '<div class="idx">' + (i + 1) + '</div>' +
+            '<select data-kind="role" data-index="' + i + '">' +
+            '<option' + (meta.role === "手点" ? " selected" : "") + '>手点</option>' +
+            '<option' + (meta.role === "脚点" ? " selected" : "") + '>脚点</option>' +
+            '<option' + (meta.role === "手脚共用" ? " selected" : "") + '>手脚共用</option>' +
+            '</select>' +
+            '<select data-kind="type" data-index="' + i + '">' +
+            typeOptions +
+            '</select>' +
+            '<select data-kind="stage" data-index="' + i + '">' +
+            '<option' + (meta.stage === "中间点 (Middle)" ? " selected" : "") + '>中间点 (Middle)</option>' +
+            '<option' + (meta.stage === "起步点 (Start)" ? " selected" : "") + '>起步点 (Start)</option>' +
+            '<option' + (meta.stage === "完攀点 (Top)" ? " selected" : "") + '>完攀点 (Top)</option>' +
+            '</select>' +
+            '<select data-kind="direction" data-index="' + i + '">' +
+            '<option' + (meta.direction === "朝上 (Up)" ? " selected" : "") + '>朝上 (Up)</option>' +
+            '<option' + (meta.direction === "朝下-反抠 (Down)" ? " selected" : "") + '>朝下-反抠 (Down)</option>' +
+            '<option' + (meta.direction === "朝左-侧拉 (Left)" ? " selected" : "") + '>朝左-侧拉 (Left)</option>' +
+            '<option' + (meta.direction === "朝右-侧拉 (Right)" ? " selected" : "") + '>朝右-侧拉 (Right)</option>' +
+            '<option' + (meta.direction === "侧捏 (Vertical)" ? " selected" : "") + '>侧捏 (Vertical)</option>' +
+            '</select>';
+          pointMetaList.appendChild(row);
+        });
+      }
+
+      pointMetaList.addEventListener("change", function (e) {
+        var t = e.target;
+        if (!t || !t.dataset) return;
+        var idx = Number(t.dataset.index);
+        if (Number.isNaN(idx) || !pointMeta[idx]) return;
+        if (t.dataset.kind === "role") {
+          pointMeta[idx].role = t.value;
+          pointMeta[idx].type = defaultTypeByRole(t.value);
+          renderPointMetaEditor();
+          return;
+        }
+        if (t.dataset.kind === "type") pointMeta[idx].type = t.value;
+        if (t.dataset.kind === "stage") pointMeta[idx].stage = t.value;
+        if (t.dataset.kind === "direction") pointMeta[idx].direction = t.value;
+      });
+
+      function draw() {
+        if (!bgImage) return;
+        var ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
+        points.forEach(function (p, i) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, Math.max(11, canvas.width / 38), 0, Math.PI * 2);
+          ctx.fillStyle = "rgba(61,255,154,0.95)";
+          ctx.fill();
+          ctx.lineWidth = 2.5;
+          ctx.strokeStyle = "rgba(10,36,26,0.95)";
+          ctx.stroke();
+          ctx.fillStyle = "#fff";
+          ctx.font = "bold " + Math.max(12, canvas.width / 30) + "px sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(String(i + 1), p.x, p.y);
+        });
+      }
+
+      function hitTestPoint(x, y) {
+        var r = Math.max(14, canvas.width / 34);
+        for (var i = points.length - 1; i >= 0; i--) {
+          var dx = points[i].x - x;
+          var dy = points[i].y - y;
+          if (Math.sqrt(dx * dx + dy * dy) <= r) return i;
+        }
+        return -1;
+      }
+
+      function pointerPos(e) {
+        var rect = canvas.getBoundingClientRect();
+        return {
+          x: (e.clientX - rect.left) * (canvas.width / rect.width),
+          y: (e.clientY - rect.top) * (canvas.height / rect.height)
+        };
+      }
+
+      function fitCanvas(img) {
+        var maxW = Math.min(900, window.innerWidth - 40);
+        var ratio = Math.min(1, maxW / img.naturalWidth);
+        canvas.width = Math.round(img.naturalWidth * ratio);
+        canvas.height = Math.round(img.naturalHeight * ratio);
+      }
+
+      function loadImageFile(file) {
+        var reader = new FileReader();
+        reader.onload = function (ev) {
+          var img = new Image();
+          img.onload = function () {
+            bgImage = img;
+            fitCanvas(img);
+            points = [];
+            pointMeta = [];
+            canvasWrap.style.display = "block";
+            syncButtons();
+            renderPointMetaEditor();
+            draw();
+          };
+          img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+      }
+
+      canvas.addEventListener("pointerdown", function (e) {
+        if (!bgImage) return;
+        var pos = pointerPos(e);
+        var hit = hitTestPoint(pos.x, pos.y);
+        if (hit >= 0) {
+          dragIndex = hit;
+          canvas.setPointerCapture(e.pointerId);
+          return;
+        }
+        points.push({ x: pos.x, y: pos.y });
+        pointMeta.push({
+          role: "手点",
+          type: "Jug (大抓点)",
+          stage: "中间点 (Middle)",
+          direction: "朝上 (Up)"
+        });
+        syncButtons();
+        renderPointMetaEditor();
+        draw();
+      });
+
+      canvas.addEventListener("pointermove", function (e) {
+        if (dragIndex < 0) return;
+        var pos = pointerPos(e);
+        points[dragIndex].x = Math.max(0, Math.min(canvas.width, pos.x));
+        points[dragIndex].y = Math.max(0, Math.min(canvas.height, pos.y));
+        draw();
+      });
+
+      canvas.addEventListener("pointerup", function (e) {
+        if (dragIndex >= 0) {
+          dragIndex = -1;
+          try { canvas.releasePointerCapture(e.pointerId); } catch (err) {}
+        }
+      });
+
+      undoBtn.addEventListener("click", function () {
+        points.pop();
+        pointMeta.pop();
+        syncButtons();
+        renderPointMetaEditor();
+        draw();
+      });
+
+      clearBtn.addEventListener("click", function () {
+        points = [];
+        pointMeta = [];
+        syncButtons();
+        renderPointMetaEditor();
+        draw();
+      });
+
+      fileInput.addEventListener("change", function () {
+        var file = fileInput.files && fileInput.files[0];
+        setUploadName(file || null);
+        if (file) loadImageFile(file);
+      });
+
+      zone.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); }
+      });
+      ["dragenter", "dragover"].forEach(function (ev) {
+        zone.addEventListener(ev, function (e) { e.preventDefault(); e.stopPropagation(); zone.classList.add("is-dragover"); });
+      });
+      ["dragleave", "drop"].forEach(function (ev) {
+        zone.addEventListener(ev, function (e) { e.preventDefault(); e.stopPropagation(); zone.classList.remove("is-dragover"); });
+      });
+      zone.addEventListener("drop", function (e) {
+        var files = e.dataTransfer && e.dataTransfer.files;
+        if (!files || !files.length) return;
+        fileInput.files = files;
+        setUploadName(files[0]);
+        loadImageFile(files[0]);
+      });
+
+      function selectText(id) {
+        var s = document.getElementById(id);
+        return s.options[s.selectedIndex].text;
+      }
+
+      function syncSlabAngleVisibility() {
+        if (!slabAngleRow || !wallAngleSelect) return;
+        slabAngleRow.hidden = wallAngleSelect.value !== "slab";
+      }
+
+      wallAngleSelect.addEventListener("change", syncSlabAngleVisibility);
+      syncSlabAngleVisibility();
+
+      function pointDataText() {
+        return points.map(function (p, i) {
+          var m = pointMeta[i] || getOrDefaultMeta(i);
+          return "点" + (i + 1) +
+            " {坐标:[" + Math.round(p.x) + "," + Math.round(p.y) +
+            "], 阶段:" + m.stage +
+            ", 肢体属性:" + m.role +
+            ", 岩点类型:" + m.type +
+            ", 朝向:" + m.direction + "}";
+        }).join("；");
+      }
+
+      function buildStep2Prompt() {
+        var wall = selectText("wallAngle");
+        if (wallAngleSelect && wallAngleSelect.value === "slab") {
+          wall += "，" + selectText("slabAngle");
+        }
+        var color = selectText("routeColor");
+        var footRule = selectText("footholdRule");
+        var height = climberHeight.value ? String(climberHeight.value).trim() : "未提供";
+        var arm = selectText("armSpanStatus");
+        var extra = document.getElementById("extraHint").value.trim();
+        var text = "你是一位顶级攀岩教练。攀登者身高" + height + "cm，臂展" + arm + "。以下是用户确认过绝对正确的路线岩点数据：" +
+          pointDataText() +
+          "。请结合物理学和人体重心（CoG）转移进行推演。\n" +
+          "补充环境信息：墙体角度=" + wall + "，线路颜色=" + color + "，脚点规则=" + footRule + "。\n" +
+          "请严格用 Markdown 输出：\n\n" +
+          "## 1. 物理受力与重心推演\n" +
+          "[简述身体重心路线和关键发力点]\n\n" +
+          "## 2. 动作拆解\n" +
+          "起步：[详细描述左/右手脚的精确位置和受力方式]\n\n" +
+          "移动1：[详细描述重心如何转移，哪只手/脚去抓/踩几号点]\n\n" +
+          "...直到完攀";
+        if (extra) text += "\n\n额外补充：" + extra;
+        return text;
+      }
+
+      function canvasToDataURL(maxSide) {
+        var w = canvas.width;
+        var h = canvas.height;
+        var scale = Math.min(1, maxSide / Math.max(w, h));
+        if (scale >= 1) return canvas.toDataURL("image/jpeg", 0.92);
+        var c = document.createElement("canvas");
+        c.width = Math.round(w * scale);
+        c.height = Math.round(h * scale);
+        c.getContext("2d").drawImage(canvas, 0, 0, c.width, c.height);
+        return c.toDataURL("image/jpeg", 0.92);
+      }
+
+      function setLoading(v) {
+        busy = v;
+        btnStep2.disabled = v || !points.length;
+        if (!v) {
+          btnStep2.textContent = "生成专业 Beta";
+          return;
+        }
+        btnStep2.textContent = "生成中...";
+      }
+
+      function parseResponse(data) {
+        if (data && data.output && data.output.text) return data.output.text;
+        var c = data && data.output && data.output.choices && data.output.choices[0];
+        if (!c || !c.message) return JSON.stringify(data, null, 2);
+        if (typeof c.message.content === "string") return c.message.content;
+        if (Array.isArray(c.message.content)) {
+          return c.message.content.map(function (x) { return x && x.text ? x.text : ""; }).filter(Boolean).join("\n");
+        }
+        return JSON.stringify(data, null, 2);
+      }
+
+      function callDashScope(promptText) {
+        // 不再直接连接阿里云，而是呼叫我们自己的 Vercel 后端接口
+        return fetch('/api/analyze', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            image: canvasToDataURL(2048),
+            promptText: promptText
+          })
+        }).then(function (res) {
+          return res.json().then(function (data) {
+            if (!res.ok) throw new Error(data.error || "请求后端失败");
+            return data;
+          });
+        });
+      }
+
+      btnStep2.addEventListener("click", function () {
+        if (busy) return;
+        if (!bgImage) return alert("请先上传路线图。");
+        if (!points.length) return alert("请先在图上打点。");
+        
+
+        setLoading(true);
+        callDashScope(buildStep2Prompt())
+          .then(function (data) {
+            resultWrap.hidden = false;
+            resultCard.classList.remove("error");
+            var out = parseResponse(data);
+            if (window.marked) resultCard.innerHTML = marked.parse(out);
+            else resultCard.textContent = out;
+            resultWrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          })
+          .catch(function (err) {
+            resultWrap.hidden = false;
+            resultCard.classList.add("error");
+            resultCard.textContent = "第二步生成失败：\n" + (err && err.message ? err.message : String(err));
+          })
+          .then(function () {
+            setLoading(false);
+            syncButtons();
+          });
+      });
+    })();
+  </script>
+</body>
+</html>
