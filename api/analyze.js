@@ -4,8 +4,8 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  // 接收前端传来的图片和操作类型
-  const { image, promptText, action } = req.body;
+  // 接收前端传来的图片、操作类型和坐标点数据
+  const { image, promptText, action, points: userPoints } = req.body;
   
   // 核心机密：从 Vercel 保险箱里读取 API Key
   const apiKey = process.env.DASHSCOPE_API_KEY;
@@ -18,35 +18,47 @@ export default async function handler(req, res) {
     // 根据 action 决定使用的 prompt
     let finalPrompt = promptText;
 
-    if (action === 'auto-detect') {
-      // AI 自动识别岩点：坐标 + 类型
-      finalPrompt = `你是一位专业的攀岩路线分析 AI。请仔细分析这张攀岩墙图片，完成以下任务：
+    if (action === 'analyze-points') {
+      // 构建坐标点描述文本
+      const pointsDesc = (userPoints || []).map(function(p, i) {
+        return '点' + (i + 1) + '：坐标 (' + Math.round(p.x) + ', ' + Math.round(p.y) + ')';
+      }).join('\n');
 
-1. 识别出图片中所有岩点（holds）的位置坐标
-2. 判断每个岩点的类型（Hold Type）
+      finalPrompt = `你是一个顶级的定线员和攀岩教练。用户已经在攀岩墙图片上标记了若干个岩点（附带坐标），请根据图片，逐一分析这些指定坐标位置的岩点。
+
+用户标记的点位如下：
+${pointsDesc}
 
 请以 **严格的 JSON 数组格式** 返回结果，不要包含任何其他文字说明。返回格式如下：
 
 [
   {
-    "x": 坐标X（相对于图片宽度的百分比，0-100之间的数字）,
-    "y": 坐标Y（相对于图片高度的百分比，0-100之间的数字）,
-    "type": "岩点类型"
+    "id": 1,
+    "limb_type": "手点",
+    "hold_type": "Jug(大把手)",
+    "direction": "上"
   },
   ...
 ]
 
-岩点类型（Hold Type）请从以下分类中选择：
-- "Jug" — 大把手点，容易抓握
-- "Crimp" — 指力窝/抠点，仅能容纳指尖
-- "Sloper" — 大斜面/坡面点，靠摩擦力
-- "Pinch" — 捏点，需要用拇指和手指对捏
-- "Pocket" — 洞点，仅能插入几根手指
+字段说明：
+- id: 对应前端传来的点位序号（从 1 开始）
+- limb_type: 必须是 "手点" 或 "脚点" 之一
+- hold_type: 
+  * 如果 limb_type 是 "手点"，必须从以下分类中选择一种：
+    - "Jug(大把手)" — 大把手点，容易抓握
+    - "Crimp(抠点/指力窝)" — 仅能容纳指尖的抠点
+    - "Sloper(斜面)" — 大斜面/坡面点，靠摩擦力
+    - "Pinch(捏点)" — 需要用拇指和手指对捏
+    - "Pocket(洞点)" — 仅能插入几根手指的洞点
+    - "Volume(大木盒)" — 大型造型点
+  * 如果 limb_type 是 "脚点"，hold_type 固定填 "Foot"
+- direction: 岩点主要的发力/开口方向，从以下分类中选择一种：
+  "上", "下", "左", "右", "左上", "右上", "左下", "右下", "无明显方向"
 
 注意事项：
-- x 和 y 是百分比数值（0-100），不要带单位
-- 请尽可能识别所有可见的岩点
-- 如果某个岩点类型不确定，选择最接近的类型
+- 请仔细观察图片中每个坐标点位置的岩点形态
+- 如果某个属性不确定，根据岩点外观选择最合理的值
 - 只返回 JSON 数组，不要有任何其他内容`;
     }
 
@@ -78,8 +90,8 @@ export default async function handler(req, res) {
       return res.status(dashScopeRes.status).json({ error: data.message || '阿里云接口返回错误' });
     }
 
-    // 如果是 auto-detect 模式，尝试解析 AI 返回的 JSON
-    if (action === 'auto-detect') {
+    // 如果是 analyze-points 模式，尝试解析 AI 返回的 JSON
+    if (action === 'analyze-points') {
       try {
         const rawText = data.output?.text || 
           data.output?.choices?.[0]?.message?.content ||
@@ -91,17 +103,17 @@ export default async function handler(req, res) {
         const jsonMatch = textContent.match(/\[\s*\{[\s\S]*\}\s*\]/);
         if (jsonMatch) {
           const parsed = JSON.parse(jsonMatch[0]);
-          return res.status(200).json({ success: true, points: parsed, raw: textContent });
+          return res.status(200).json({ success: true, analysis: parsed, raw: textContent });
         }
         
         // 如果没找到 JSON 数组，返回原始文本让前端处理
-        return res.status(200).json({ success: true, points: null, raw: textContent });
+        return res.status(200).json({ success: true, analysis: null, raw: textContent });
       } catch (parseError) {
-        return res.status(200).json({ success: true, points: null, raw: data.output?.text || JSON.stringify(data) });
+        return res.status(200).json({ success: true, analysis: null, raw: data.output?.text || JSON.stringify(data) });
       }
     }
 
-    // 非 auto-detect 模式：将结果原封不动返回给前端
+    // 非 analyze-points 模式（Beta 生成）：将结果原封不动返回给前端
     return res.status(200).json(data);
     
   } catch (error) {
