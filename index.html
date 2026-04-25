@@ -209,9 +209,9 @@
     }
     .result-card img,
     .result-card video { max-width: 100%; height: auto; }
-    @media (max-width: 390px) {
+    @media (max-width: 420px) {
       .grid2 { grid-template-columns: 1fr; }
-      .point-meta-item { grid-template-columns: 44px 1fr 1fr; }
+      .point-meta-item { grid-template-columns: 44px 1fr; }
     }
   </style>
 </head>
@@ -293,10 +293,10 @@
       <div class="meta-head">
         <strong>岩点数量：<span id="pointCountBadge">0</span></strong>
       </div>
-      <p class="tip">流程建议：先点位并拖拽微调，再手动配置每个点位属性，最后生成专业 Beta。</p>
+      <p class="tip">在图片上点击标记岩点位置，然后点击"分析这些岩点"让 AI 识别每个点的属性。</p>
       <div id="pointMetaList" class="point-meta-list"></div>
 
-      <button class="btn-analyze" id="btnAutoDetect" type="button" disabled>🤖 AI 自动识别岩点</button>
+      <button class="btn-analyze" id="btnAnalyzePoints" type="button" disabled>🔍 分析这些岩点</button>
       <div style="height:8px"></div>
       <button class="btn-analyze btn-step2" id="btnStep2" type="button" disabled>生成专业 Beta</button>
     </section>
@@ -320,7 +320,7 @@
       var clearBtn = document.getElementById("clearPoints");
       var pointMetaList = document.getElementById("pointMetaList");
       var pointCountBadge = document.getElementById("pointCountBadge");
-      var btnAutoDetect = document.getElementById("btnAutoDetect");
+      var btnAnalyzePoints = document.getElementById("btnAnalyzePoints");
       var btnStep2 = document.getElementById("btnStep2");
       var climberHeight = document.getElementById("climberHeight");
       var armSpanStatus = document.getElementById("armSpanStatus");
@@ -329,20 +329,30 @@
       var wallAngleSelect = document.getElementById("wallAngle");
       var slabAngleRow = document.getElementById("slabAngleRow");
 
-      var HAND_TYPES = [
-        { value: "Jug (大抓点)", label: "Jug (大抓点)" },
-        { value: "Crimp (抠点)", label: "Crimp (抠点)" },
-        { value: "Sloper (摩擦点)", label: "Sloper (摩擦点)" },
-        { value: "Pinch (捏点)", label: "Pinch (捏点)" },
-        { value: "Pocket (指洞)", label: "Pocket (指洞)" },
-        { value: "Undercling (反抠)", label: "Undercling (反抠)" },
-        { value: "Sidepull (侧拉)", label: "Sidepull (侧拉)" }
+      // 岩点类型选项（手点）
+      var HOLD_TYPE_OPTIONS = [
+        { value: "Jug(大把手)", label: "Jug(大把手)" },
+        { value: "Crimp(抠点/指力窝)", label: "Crimp(抠点/指力窝)" },
+        { value: "Sloper(斜面)", label: "Sloper(斜面)" },
+        { value: "Pinch(捏点)", label: "Pinch(捏点)" },
+        { value: "Pocket(洞点)", label: "Pocket(洞点)" },
+        { value: "Volume(大木盒)", label: "Volume(大木盒)" }
       ];
-      var FOOT_TYPES = [
-        { value: "Edge (微小踩点)", label: "Edge (微小踩点)" },
-        { value: "Smear (纯墙面摩擦)", label: "Smear (纯墙面摩擦)" },
-        { value: "Volume (大造型)", label: "Volume (大造型)" },
-        { value: "Hook (挂脚/勾脚处)", label: "Hook (挂脚/勾脚处)" }
+      // 岩点类型选项（脚点）
+      var FOOT_HOLD_OPTIONS = [
+        { value: "Foot", label: "Foot" }
+      ];
+      // 方向选项
+      var DIRECTION_OPTIONS = [
+        { value: "上", label: "上" },
+        { value: "下", label: "下" },
+        { value: "左", label: "左" },
+        { value: "右", label: "右" },
+        { value: "左上", label: "左上" },
+        { value: "右上", label: "右上" },
+        { value: "左下", label: "左下" },
+        { value: "右下", label: "右下" },
+        { value: "无明显方向", label: "无明显方向" }
       ];
       var points = [];
       var pointMeta = [];
@@ -365,38 +375,27 @@
         undoBtn.disabled = !has;
         clearBtn.disabled = !has;
         pointCountBadge.textContent = String(points.length);
-        btnAutoDetect.disabled = !bgImage || busy;
+        btnAnalyzePoints.disabled = !has || busy;
         btnStep2.disabled = !has || busy;
       }
 
-      function getTypeOptionsByRole(role) {
-        return role === "脚点" ? FOOT_TYPES : HAND_TYPES;
+      function getHoldTypeOptions(limbType) {
+        return limbType === "脚点" ? FOOT_HOLD_OPTIONS : HOLD_TYPE_OPTIONS;
       }
 
-      function defaultTypeByRole(role) {
-        var opts = getTypeOptionsByRole(role);
-        return opts[0].value;
+      function defaultHoldType(limbType) {
+        return limbType === "脚点" ? "Foot" : "Jug(大把手)";
       }
 
-      // AI 返回的简写类型名 → 应用中完整类型名的映射
-      var AI_TYPE_MAP = {
-        "Jug": "Jug (大抓点)",
-        "Crimp": "Crimp (抠点)",
-        "Sloper": "Sloper (摩擦点)",
-        "Pinch": "Pinch (捏点)",
-        "Pocket": "Pocket (指洞)"
-      };
-
-      function aiTypeToFull(aiType) {
-        return AI_TYPE_MAP[aiType] || "Jug (大抓点)";
+      function defaultDirection() {
+        return "上";
       }
 
       function getOrDefaultMeta(index) {
         return pointMeta[index] || {
-          role: "手点",
-          type: "Jug (大抓点)",
-          stage: "中间点 (Middle)",
-          direction: "朝上 (Up)"
+          limb_type: "手点",
+          hold_type: "Jug(大把手)",
+          direction: "上"
         };
       }
 
@@ -404,34 +403,29 @@
         pointMeta = points.map(function (_, i) { return getOrDefaultMeta(i); });
         pointMetaList.innerHTML = "";
         pointMeta.forEach(function (meta, i) {
-          var typeOptions = getTypeOptionsByRole(meta.role)
+          var holdOptions = getHoldTypeOptions(meta.limb_type)
             .map(function (opt) {
-              return '<option value="' + opt.value + '"' + (meta.type === opt.value ? " selected" : "") + ">" + opt.label + "</option>";
+              return '<option value="' + opt.value + '"' + (meta.hold_type === opt.value ? " selected" : "") + ">" + opt.label + "</option>";
+            })
+            .join("");
+          var dirOptions = DIRECTION_OPTIONS
+            .map(function (opt) {
+              return '<option value="' + opt.value + '"' + (meta.direction === opt.value ? " selected" : "") + ">" + opt.label + "</option>";
             })
             .join("");
           var row = document.createElement("div");
           row.className = "point-meta-item";
           row.innerHTML =
             '<div class="idx">' + (i + 1) + '</div>' +
-            '<select data-kind="role" data-index="' + i + '">' +
-            '<option' + (meta.role === "手点" ? " selected" : "") + '>手点</option>' +
-            '<option' + (meta.role === "脚点" ? " selected" : "") + '>脚点</option>' +
-            '<option' + (meta.role === "手脚共用" ? " selected" : "") + '>手脚共用</option>' +
+            '<select data-kind="limb_type" data-index="' + i + '">' +
+            '<option' + (meta.limb_type === "手点" ? " selected" : "") + '>手点</option>' +
+            '<option' + (meta.limb_type === "脚点" ? " selected" : "") + '>脚点</option>' +
             '</select>' +
-            '<select data-kind="type" data-index="' + i + '">' +
-            typeOptions +
-            '</select>' +
-            '<select data-kind="stage" data-index="' + i + '">' +
-            '<option' + (meta.stage === "中间点 (Middle)" ? " selected" : "") + '>中间点 (Middle)</option>' +
-            '<option' + (meta.stage === "起步点 (Start)" ? " selected" : "") + '>起步点 (Start)</option>' +
-            '<option' + (meta.stage === "完攀点 (Top)" ? " selected" : "") + '>完攀点 (Top)</option>' +
+            '<select data-kind="hold_type" data-index="' + i + '">' +
+            holdOptions +
             '</select>' +
             '<select data-kind="direction" data-index="' + i + '">' +
-            '<option' + (meta.direction === "朝上 (Up)" ? " selected" : "") + '>朝上 (Up)</option>' +
-            '<option' + (meta.direction === "朝下-反抠 (Down)" ? " selected" : "") + '>朝下-反抠 (Down)</option>' +
-            '<option' + (meta.direction === "朝左-侧拉 (Left)" ? " selected" : "") + '>朝左-侧拉 (Left)</option>' +
-            '<option' + (meta.direction === "朝右-侧拉 (Right)" ? " selected" : "") + '>朝右-侧拉 (Right)</option>' +
-            '<option' + (meta.direction === "侧捏 (Vertical)" ? " selected" : "") + '>侧捏 (Vertical)</option>' +
+            dirOptions +
             '</select>';
           pointMetaList.appendChild(row);
         });
@@ -442,14 +436,13 @@
         if (!t || !t.dataset) return;
         var idx = Number(t.dataset.index);
         if (Number.isNaN(idx) || !pointMeta[idx]) return;
-        if (t.dataset.kind === "role") {
-          pointMeta[idx].role = t.value;
-          pointMeta[idx].type = defaultTypeByRole(t.value);
+        if (t.dataset.kind === "limb_type") {
+          pointMeta[idx].limb_type = t.value;
+          pointMeta[idx].hold_type = defaultHoldType(t.value);
           renderPointMetaEditor();
           return;
         }
-        if (t.dataset.kind === "type") pointMeta[idx].type = t.value;
-        if (t.dataset.kind === "stage") pointMeta[idx].stage = t.value;
+        if (t.dataset.kind === "hold_type") pointMeta[idx].hold_type = t.value;
         if (t.dataset.kind === "direction") pointMeta[idx].direction = t.value;
       });
 
@@ -530,10 +523,9 @@
         }
         points.push({ x: pos.x, y: pos.y });
         pointMeta.push({
-          role: "手点",
-          type: "Jug (大抓点)",
-          stage: "中间点 (Middle)",
-          direction: "朝上 (Up)"
+          limb_type: "手点",
+          hold_type: "Jug(大把手)",
+          direction: "上"
         });
         syncButtons();
         renderPointMetaEditor();
@@ -612,9 +604,8 @@
           var m = pointMeta[i] || getOrDefaultMeta(i);
           return "点" + (i + 1) +
             " {坐标:[" + Math.round(p.x) + "," + Math.round(p.y) +
-            "], 阶段:" + m.stage +
-            ", 肢体属性:" + m.role +
-            ", 岩点类型:" + m.type +
+            "], 肢体属性:" + m.limb_type +
+            ", 岩点类型:" + m.hold_type +
             ", 朝向:" + m.direction + "}";
         }).join("；");
       }
@@ -658,7 +649,7 @@
 
       function setLoading(v) {
         busy = v;
-        btnAutoDetect.disabled = v || !bgImage;
+        btnAnalyzePoints.disabled = v || !points.length;
         btnStep2.disabled = v || !points.length;
         if (!v) {
           btnStep2.textContent = "生成专业 Beta";
@@ -697,8 +688,16 @@
         });
       }
 
-      // AI 自动识别岩点
-      function callAutoDetect() {
+      // AI 分析岩点属性：发送图片 + 用户打的坐标点给后端
+      function callAnalyzePoints() {
+        // 构建坐标点数组（百分比格式，相对于图片尺寸）
+        var pointCoords = points.map(function (p) {
+          return {
+            x: Math.round(p.x / canvas.width * 10000) / 100,
+            y: Math.round(p.y / canvas.height * 10000) / 100
+          };
+        });
+
         return fetch('/api/analyze', {
           method: 'POST',
           headers: {
@@ -706,7 +705,8 @@
           },
           body: JSON.stringify({
             image: canvasToDataURL(2048),
-            action: 'auto-detect'
+            action: 'analyze-points',
+            points: pointCoords
           })
         }).then(function (res) {
           return res.json().then(function (data) {
@@ -716,28 +716,20 @@
         });
       }
 
-      function applyAutoDetectResult(data) {
-        if (!data.success || !data.points || !data.points.length) {
-          alert("AI 未能识别出岩点，请尝试手动标记。\n\n原始返回：" + (data.raw || JSON.stringify(data)));
+      function applyAnalysisResult(data) {
+        if (!data.success || !data.analysis || !data.analysis.length) {
+          alert("AI 分析失败，请重试。\n\n原始返回：" + (data.raw || JSON.stringify(data)));
           return;
         }
 
-        // 清空旧的点位
-        points = [];
-        pointMeta = [];
-
-        // 将 AI 返回的点位转换为应用内部格式
-        data.points.forEach(function (p) {
-          // AI 返回的 x/y 是百分比（0-100），转换为 canvas 像素坐标
-          var px = Math.round(p.x / 100 * canvas.width);
-          var py = Math.round(p.y / 100 * canvas.height);
-          points.push({ x: Math.max(0, Math.min(canvas.width, px)), y: Math.max(0, Math.min(canvas.height, py)) });
-          pointMeta.push({
-            role: "手点",
-            type: aiTypeToFull(p.type),
-            stage: "中间点 (Middle)",
-            direction: "朝上 (Up)"
-          });
+        // 用 AI 分析结果更新 pointMeta
+        data.analysis.forEach(function (item) {
+          var idx = item.id - 1; // AI 返回的 id 从 1 开始
+          if (idx >= 0 && idx < pointMeta.length) {
+            pointMeta[idx].limb_type = item.limb_type || "手点";
+            pointMeta[idx].hold_type = item.hold_type || defaultHoldType(pointMeta[idx].limb_type);
+            pointMeta[idx].direction = item.direction || "上";
+          }
         });
 
         syncButtons();
@@ -748,34 +740,35 @@
         resultWrap.hidden = false;
         resultCard.classList.remove("error");
         resultCard.innerHTML = '<div style="padding:12px;border:1px solid rgba(255,107,44,0.3);border-radius:12px;background:rgba(255,107,44,0.08);margin-bottom:12px">' +
-          '<strong style="color:var(--accent)">⚠️ AI 识别结果仅供参考，请根据实际情况点击调整岩点类型。</strong>' +
-          '<p style="margin:8px 0 0;font-size:0.85rem;color:var(--muted)">已识别 <strong>' + points.length + '</strong> 个岩点。请在上方列表中核对每个点的类型，如有错误可直接下拉修改。</p>' +
+          '<strong style="color:var(--accent)">⚠️ AI 识别结果仅供参考，请根据实际情况点击调整岩点属性。</strong>' +
+          '<p style="margin:8px 0 0;font-size:0.85rem;color:var(--muted)">已分析 <strong>' + data.analysis.length + '</strong> 个岩点。请在上方列表中核对每个点的肢体类型、岩点类型和方向，如有错误可直接下拉修改。</p>' +
           '</div>';
         resultWrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
       }
 
-      btnAutoDetect.addEventListener("click", function () {
+      btnAnalyzePoints.addEventListener("click", function () {
         if (busy) return;
         if (!bgImage) return alert("请先上传路线图。");
+        if (!points.length) return alert("请先在图上打点。");
 
         busy = true;
-        btnAutoDetect.disabled = true;
-        btnAutoDetect.textContent = "AI 识别中...";
+        btnAnalyzePoints.disabled = true;
+        btnAnalyzePoints.textContent = "分析中...";
         btnStep2.disabled = true;
 
-        callAutoDetect()
+        callAnalyzePoints()
           .then(function (data) {
-            applyAutoDetectResult(data);
+            applyAnalysisResult(data);
           })
           .catch(function (err) {
             resultWrap.hidden = false;
             resultCard.classList.add("error");
-            resultCard.textContent = "AI 自动识别失败：\n" + (err && err.message ? err.message : String(err));
+            resultCard.textContent = "AI 分析失败：\n" + (err && err.message ? err.message : String(err));
             resultWrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
           })
           .then(function () {
             busy = false;
-            btnAutoDetect.textContent = "🤖 AI 自动识别岩点";
+            btnAnalyzePoints.textContent = "🔍 分析这些岩点";
             syncButtons();
           });
       });
