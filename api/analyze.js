@@ -18,7 +18,7 @@ export default async function handler(req, res) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'qwen-vl-plus',
+        model: 'qwen-vl-max',
         input: {
           messages: [
             {
