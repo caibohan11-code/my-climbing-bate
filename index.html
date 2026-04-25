@@ -4,10 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>抱石作业帮</title>
-  <meta property="og:title" content="抱石作业帮 - AI 攀岩教练" />
-  <meta property="og:description" content="上传攀岩路线图，AI自动生成专业动作拆解与Beta！" />
-  <meta property="og:image" content="https://images.unsplash.com/photo-1522163182402-834f871fd851?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80" />
-  <meta property="og:url" content="你的网页真实网址" />
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
     :root {
@@ -300,6 +296,8 @@
       <p class="tip">流程建议：先点位并拖拽微调，再手动配置每个点位属性，最后生成专业 Beta。</p>
       <div id="pointMetaList" class="point-meta-list"></div>
 
+      <button class="btn-analyze" id="btnAutoDetect" type="button" disabled>🤖 AI 自动识别岩点</button>
+      <div style="height:8px"></div>
       <button class="btn-analyze btn-step2" id="btnStep2" type="button" disabled>生成专业 Beta</button>
     </section>
 
@@ -322,6 +320,7 @@
       var clearBtn = document.getElementById("clearPoints");
       var pointMetaList = document.getElementById("pointMetaList");
       var pointCountBadge = document.getElementById("pointCountBadge");
+      var btnAutoDetect = document.getElementById("btnAutoDetect");
       var btnStep2 = document.getElementById("btnStep2");
       var climberHeight = document.getElementById("climberHeight");
       var armSpanStatus = document.getElementById("armSpanStatus");
@@ -366,6 +365,7 @@
         undoBtn.disabled = !has;
         clearBtn.disabled = !has;
         pointCountBadge.textContent = String(points.length);
+        btnAutoDetect.disabled = !bgImage || busy;
         btnStep2.disabled = !has || busy;
       }
 
@@ -376,6 +376,19 @@
       function defaultTypeByRole(role) {
         var opts = getTypeOptionsByRole(role);
         return opts[0].value;
+      }
+
+      // AI 返回的简写类型名 → 应用中完整类型名的映射
+      var AI_TYPE_MAP = {
+        "Jug": "Jug (大抓点)",
+        "Crimp": "Crimp (抠点)",
+        "Sloper": "Sloper (摩擦点)",
+        "Pinch": "Pinch (捏点)",
+        "Pocket": "Pocket (指洞)"
+      };
+
+      function aiTypeToFull(aiType) {
+        return AI_TYPE_MAP[aiType] || "Jug (大抓点)";
       }
 
       function getOrDefaultMeta(index) {
@@ -496,6 +509,7 @@
             points = [];
             pointMeta = [];
             canvasWrap.style.display = "block";
+            resultWrap.hidden = true;
             syncButtons();
             renderPointMetaEditor();
             draw();
@@ -644,6 +658,7 @@
 
       function setLoading(v) {
         busy = v;
+        btnAutoDetect.disabled = v || !bgImage;
         btnStep2.disabled = v || !points.length;
         if (!v) {
           btnStep2.textContent = "生成专业 Beta";
@@ -681,6 +696,89 @@
           });
         });
       }
+
+      // AI 自动识别岩点
+      function callAutoDetect() {
+        return fetch('/api/analyze', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            image: canvasToDataURL(2048),
+            action: 'auto-detect'
+          })
+        }).then(function (res) {
+          return res.json().then(function (data) {
+            if (!res.ok) throw new Error(data.error || "请求后端失败");
+            return data;
+          });
+        });
+      }
+
+      function applyAutoDetectResult(data) {
+        if (!data.success || !data.points || !data.points.length) {
+          alert("AI 未能识别出岩点，请尝试手动标记。\n\n原始返回：" + (data.raw || JSON.stringify(data)));
+          return;
+        }
+
+        // 清空旧的点位
+        points = [];
+        pointMeta = [];
+
+        // 将 AI 返回的点位转换为应用内部格式
+        data.points.forEach(function (p) {
+          // AI 返回的 x/y 是百分比（0-100），转换为 canvas 像素坐标
+          var px = Math.round(p.x / 100 * canvas.width);
+          var py = Math.round(p.y / 100 * canvas.height);
+          points.push({ x: Math.max(0, Math.min(canvas.width, px)), y: Math.max(0, Math.min(canvas.height, py)) });
+          pointMeta.push({
+            role: "手点",
+            type: aiTypeToFull(p.type),
+            stage: "中间点 (Middle)",
+            direction: "朝上 (Up)"
+          });
+        });
+
+        syncButtons();
+        renderPointMetaEditor();
+        draw();
+
+        // 显示提示信息
+        resultWrap.hidden = false;
+        resultCard.classList.remove("error");
+        resultCard.innerHTML = '<div style="padding:12px;border:1px solid rgba(255,107,44,0.3);border-radius:12px;background:rgba(255,107,44,0.08);margin-bottom:12px">' +
+          '<strong style="color:var(--accent)">⚠️ AI 识别结果仅供参考，请根据实际情况点击调整岩点类型。</strong>' +
+          '<p style="margin:8px 0 0;font-size:0.85rem;color:var(--muted)">已识别 <strong>' + points.length + '</strong> 个岩点。请在上方列表中核对每个点的类型，如有错误可直接下拉修改。</p>' +
+          '</div>';
+        resultWrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+
+      btnAutoDetect.addEventListener("click", function () {
+        if (busy) return;
+        if (!bgImage) return alert("请先上传路线图。");
+
+        busy = true;
+        btnAutoDetect.disabled = true;
+        btnAutoDetect.textContent = "AI 识别中...";
+        btnStep2.disabled = true;
+
+        callAutoDetect()
+          .then(function (data) {
+            applyAutoDetectResult(data);
+          })
+          .catch(function (err) {
+            resultWrap.hidden = false;
+            resultCard.classList.add("error");
+            resultCard.textContent = "AI 自动识别失败：\n" + (err && err.message ? err.message : String(err));
+            resultWrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          })
+          .then(function () {
+            busy = false;
+            btnAutoDetect.textContent = "🤖 AI 自动识别岩点";
+            syncButtons();
+          });
+      });
 
       btnStep2.addEventListener("click", function () {
         if (busy) return;
